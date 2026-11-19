@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8182534f836663340acde4d485956a4d, type: 3}
+  m_Name: BiofuelRefinery
+  m_EditorClassIdentifier: Assembly-CSharp::StructureDataSO
+  <StructureTitle>k__BackingField: Biofuel Refinery
+  <StructureInfo>k__BackingField: Produced 15 Biofuel
+  <StructureIcon>k__BackingField: {fileID: 0}
+  <StructurePrefab>k__BackingField: {fileID: 8255725005642933932, guid: 7f8dabb821b150344ab20e0d27dabafb, type: 3}
+  <Costs>k__BackingField:
+  - resourceDataSo: {fileID: 11400000, guid: d6cdf2898ecf11445a9b136f67877a09, type: 2}
+    amount: 5
+  - resourceDataSo: {fileID: 11400000, guid: 8213b31a18eaacb449276f5c9659144c, type: 2}
+    amount: 10
+  - resourceDataSo: {fileID: 11400000, guid: 42d0a33d5d93fa0468020c1672f70b5c, type: 2}
+    amount: 5

@@ -1,0 +1,243 @@
+﻿using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+using System.Collections;
+
+public class UiResourceHarvest : UiModals
+{
+    // Must match the child GameObject names on the SoundManager prefab.
+    private const string EnableSFXName = "SFXEnable";
+    private const string DisableSFXName = "SFXDisable";
+    private const string ErrorSFXName = "SFXError";
+
+    [Header("UI References")]
+    [SerializeField] private TextMeshProUGUI titleText;
+    [SerializeField] private TextMeshProUGUI laborCostText;
+    [SerializeField] private TextMeshProUGUI notEnoughWorkersText;
+    [SerializeField] private Button activateButton;
+    [SerializeField] private TextMeshProUGUI activateButtonText;
+
+    [Header("Destroy Button References")]
+    [SerializeField] private Button destroyButton;
+    [SerializeField] private TextMeshProUGUI destroyButtonText;
+
+    [Header("Progress Bar References")]
+    [SerializeField] private GameObject productionBarContainer;
+    [SerializeField] private Image fillImage;
+    [SerializeField] private TextMeshProUGUI progressDescriptionText;
+
+    [Header("Button Customization")]
+    [SerializeField] private Color activateButtonColor = new Color(0.15f, 0.6f, 0.5f); // Clean teal/green for activate
+    [SerializeField] private Color activateTextColor = Color.white;
+    [SerializeField] private Color deactivateButtonColor = new Color(0.85f, 0.15f, 0.15f); // Rich red for deactivate
+    [SerializeField] private Color deactivateTextColor = new Color(1f, 0.92f, 0.016f); // Bright yellow text
+
+    private StructureHarvestResource currentStructure;
+    private Coroutine warningRoutine;
+
+    protected override void Initialize()
+    {
+        base.Initialize();
+
+        if (activateButtonText == null && activateButton != null)
+            activateButtonText = activateButton.GetComponentInChildren<TextMeshProUGUI>();
+
+        if (destroyButtonText == null && destroyButton != null)
+            destroyButtonText = destroyButton.GetComponentInChildren<TextMeshProUGUI>();
+
+        if (activateButton != null)
+        {
+            activateButton.onClick.RemoveAllListeners();
+            activateButton.onClick.AddListener(OnActivateClicked);
+        }
+
+        if (destroyButton != null)
+        {
+            destroyButton.onClick.RemoveAllListeners();
+            destroyButton.onClick.AddListener(OnDestroyClicked);
+        }
+
+        if (notEnoughWorkersText != null)
+            notEnoughWorkersText.gameObject.SetActive(false);
+
+        if (productionBarContainer != null)
+            productionBarContainer.SetActive(false);
+    }
+
+    private void Update()
+    {
+        if (IsOpen && currentStructure != null)
+        {
+            // Auto-close modal if structure becomes submerged while UI is open
+            if (currentStructure.IsSubmerged)
+            {
+                Debug.Log($"[UiResourceHarvest] '{currentStructure.StructureTitle}' is submerged! Force closing UI.");
+                GameManager.Instance.uiController.CloseAllModals();
+                return;
+            }
+
+            bool showBar = currentStructure.IsWorking || currentStructure.IsDestroying;
+            if (productionBarContainer != null && productionBarContainer.activeSelf != showBar)
+                productionBarContainer.SetActive(showBar);
+
+            if (showBar && fillImage != null)
+                fillImage.fillAmount = currentStructure.ProgressPercentage;
+
+            if (progressDescriptionText != null)
+                progressDescriptionText.text = currentStructure.ProductionDescription;
+
+            UpdateActivateButtonVisuals();
+            UpdateDestroyButtonVisuals();
+        }
+    }
+
+    public void Setup(StructureHarvestResource structure)
+    {
+        currentStructure = structure;
+
+        if (titleText != null) titleText.text = structure.StructureTitle;
+        if (laborCostText != null) laborCostText.text = $"Labor Cost: {structure.LaborCost}";
+        if (notEnoughWorkersText != null) notEnoughWorkersText.gameObject.SetActive(false);
+
+        // Show or hide destroy button based on structure configuration
+        if (destroyButton != null)
+            destroyButton.gameObject.SetActive(structure.CanBeDestroyed);
+
+        UpdateActivateButtonVisuals();
+        UpdateDestroyButtonVisuals();
+    }
+
+    public bool IsShowingStructure(StructureHarvestResource structure) => IsOpen && currentStructure == structure;
+
+    private void UpdateActivateButtonVisuals()
+    {
+        if (activateButton != null && currentStructure != null)
+        {
+            bool isWorking = currentStructure.IsWorking;
+
+            if (activateButtonText != null)
+            {
+                activateButtonText.text = isWorking ? "Deactivate" : "Activate";
+                activateButtonText.color = isWorking ? deactivateTextColor : activateTextColor;
+            }
+
+            ColorBlock colors = activateButton.colors;
+            Color targetColor = isWorking ? deactivateButtonColor : activateButtonColor;
+
+            colors.normalColor = targetColor;
+            colors.highlightedColor = targetColor;
+            colors.pressedColor = targetColor;
+            colors.selectedColor = targetColor;
+            activateButton.colors = colors;
+
+            activateButton.interactable = !currentStructure.IsDestroying;
+        }
+    }
+
+    private void UpdateDestroyButtonVisuals()
+    {
+        if (destroyButton != null && currentStructure != null && currentStructure.CanBeDestroyed)
+        {
+            bool isDestroying = currentStructure.IsDestroying;
+
+            if (destroyButtonText != null)
+                destroyButtonText.text = isDestroying ? "Cancel" : "Destroy Structure";
+
+            ColorBlock colors = destroyButton.colors;
+            Color targetColor = isDestroying ? Color.red : new Color(1f, 0.85f, 0f);
+
+            colors.normalColor = targetColor;
+            colors.highlightedColor = targetColor;
+            colors.pressedColor = targetColor;
+            colors.selectedColor = targetColor;
+            destroyButton.colors = colors;
+        }
+    }
+
+    private void OnActivateClicked()
+    {
+        if (currentStructure == null) return;
+
+        // Consumable harvests get their own SFX on collection (SFXConfirm in
+        // StructureHarvestResource). The activate/deactivate click sounds
+        // are only for Depletable and Infinite modes.
+        bool playClickSfx = currentStructure.HarvestMode != HarvestMode.Consumable;
+
+        if (currentStructure.IsWorking)
+        {
+            // Deactivate path: ToggleHarvesting() stops the harvest.
+            currentStructure.ToggleHarvesting();
+
+            if (playClickSfx) PlayClickSfx(DisableSFXName);
+
+            GameManager.Instance.uiController.CloseAllModals();
+        }
+        else
+        {
+            // Check if we have enough workers before activating
+            var workerMgr = GameManager.Instance.WorkerManager;
+            if (workerMgr != null && workerMgr.CurrentWorker >= currentStructure.LaborCost)
+            {
+                // Activate path: ToggleHarvesting() starts the harvest.
+                currentStructure.ToggleHarvesting();
+
+                if (playClickSfx) PlayClickSfx(EnableSFXName);
+
+                GameManager.Instance.uiController.CloseAllModals();
+            }
+            else
+            {
+                // Not enough workers -> warning + error SFX fire inside
+                // ShowNotEnoughWorkersWarning(), so no extra call needed here.
+                ShowNotEnoughWorkersWarning();
+            }
+        }
+    }
+
+    private void OnDestroyClicked()
+    {
+        if (currentStructure != null)
+            currentStructure.ToggleDestroying();
+    }
+
+    private void PlayClickSfx(string name)
+    {
+        var sm = GameManager.Instance != null ? GameManager.Instance.SoundManager : null;
+        if (sm != null)
+            sm.Play(name);
+    }
+
+    public void ShowNotEnoughWorkersWarning()
+    {
+        if (notEnoughWorkersText != null && currentStructure != null)
+        {
+            // ── Error SFX ─────────────────────────────────────────────
+            // Fires here (not at the call sites) so every entry point into
+            // this method — button click AND TryStartHarvest() — plays the
+            // error sound exactly once.
+            PlayClickSfx(ErrorSFXName);
+            // ──────────────────────────────────────────────────────────
+
+            int cost = currentStructure.LaborCost;
+            string workerUnit = cost == 1 ? "Worker" : "Workers";
+            notEnoughWorkersText.text = $"Needs {cost} Available {workerUnit}";
+
+            if (warningRoutine != null)
+                StopCoroutine(warningRoutine);
+            warningRoutine = StartCoroutine(FlashWarningRoutine());
+        }
+    }
+
+    private IEnumerator FlashWarningRoutine()
+    {
+        notEnoughWorkersText.gameObject.SetActive(true);
+        yield return new WaitForSeconds(2f);
+        notEnoughWorkersText.gameObject.SetActive(false);
+    }
+
+    public void CompleteProgress()
+    {
+        if (productionBarContainer != null)
+            productionBarContainer.SetActive(false);
+    }
+}
