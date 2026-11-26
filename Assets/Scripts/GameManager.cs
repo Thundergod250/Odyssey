@@ -7,8 +7,10 @@ public class GameManager : MonoBehaviour
     [Header("Global References")]
     public ObjectPooling objectPooling;
     public InputManager InputManager;
+    public BaseInputs BaseInputs;
     public CursorManager CursorManager;
     public ClickInteractor ClickInteractor;
+    public UIController UIController;
 
     private void Awake()
     {
