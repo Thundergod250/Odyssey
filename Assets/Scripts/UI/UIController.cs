@@ -12,7 +12,7 @@ public class UIController : MonoBehaviour
     [Header("Debug")]
     [SerializeField] private bool enableDebugLogs = true;
 
-    private readonly Dictionary<Type, UIPanel> _panels = new();
+    private readonly Dictionary<Type, UIPanel> _panels = new Dictionary<Type, UIPanel>();
     private UIPanel _currentPanel;
 
     private void Awake()
@@ -27,6 +27,12 @@ public class UIController : MonoBehaviour
 
     private void Start() => CloseAllUI(this);
 
+    private void SetCameraMovementActive(bool isActive)
+    {
+        if (GameManager.Instance != null && GameManager.Instance.CameraMovement != null)
+            GameManager.Instance.CameraMovement.SetMovementEnabled(isActive);
+    }
+
     public void CloseAllUI(Object source = null, [CallerMemberName] string caller = "")
     {
         foreach (UIPanel panel in _panels.Values)
@@ -37,6 +43,7 @@ public class UIController : MonoBehaviour
         if (UImainHUD != null)
             UImainHUD.gameObject.SetActive(true);
 
+        SetCameraMovementActive(true);
         UIDebugLogger.Log(enableDebugLogs, source, this, caller, "ClosedAllUI (HUD active)");
     }
 
@@ -56,6 +63,7 @@ public class UIController : MonoBehaviour
 
         targetPanel.Open();
         _currentPanel = targetPanel;
+        SetCameraMovementActive(false);
 
         UIDebugLogger.Log(enableDebugLogs, source, this, caller, $"OpenedUI ({typeof(T).Name})");
         return (T)targetPanel;

@@ -11,6 +11,7 @@ public class GameManager : MonoBehaviour
     public CursorManager CursorManager;
     public ClickInteractor ClickInteractor;
     public UIController UIController;
+    public CameraMovement CameraMovement;
 
     private void Awake()
     {

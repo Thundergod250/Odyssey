@@ -14,7 +14,7 @@ public class CameraMovement : MonoBehaviour
     [SerializeField] private float maxZ = 50f;
 
     [Header("Zoom Settings")]
-    [SerializeField] private CinemachineFollow cinemachineFollow; // Reference to Cinemachine 3.x Follow component
+    [SerializeField] private CinemachineFollow cinemachineFollow; 
     [SerializeField] private float zoomSpeed = 5f;
     [SerializeField] private float minZoomY = 10f;
     [SerializeField] private float maxZoomY = 50f;
@@ -22,32 +22,36 @@ public class CameraMovement : MonoBehaviour
 
     private Transform cameraTransform;
     private float targetZoomY;
+    private bool isMovementEnabled = true;
 
     private void Start()
     {
         if (Camera.main != null)
-        {
             cameraTransform = Camera.main.transform;
-        }
         else
-        {
             cameraTransform = transform;
-        }
 
-        // Initialize target zoom from current Cinemachine Follow offset
-        if (cinemachineFollow != null)
-        {
+        if (cinemachineFollow != null) 
             targetZoomY = cinemachineFollow.FollowOffset.y;
-        }
     }
 
     private void Update()
     {
-        HandleWASDMovement();
-        HandleMouseDragMovement();
-        HandleZoom();
+        if (isMovementEnabled)
+        {
+            HandleWASDMovement();
+            HandleMouseDragMovement();
+            HandleZoom();
+        }
+
         ClampPosition();
     }
+
+    public void EnableMovement() => isMovementEnabled = true;
+
+    public void DisableMovement() => isMovementEnabled = false;
+
+    public void SetMovementEnabled(bool enabled) => isMovementEnabled = enabled;
 
     private void HandleWASDMovement()
     {
