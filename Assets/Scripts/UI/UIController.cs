@@ -1,11 +1,16 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 public class UIController : MonoBehaviour
 {
     [Header("Persistent HUD")]
     public UIMainHUD UImainHUD;
+
+    [Header("Debug")]
+    [SerializeField] private bool enableDebugLogs = true;
 
     private readonly Dictionary<Type, UIPanel> _panels = new();
     private UIPanel _currentPanel;
@@ -16,13 +21,13 @@ public class UIController : MonoBehaviour
         {
             Type type = panel.GetType();
             if (!_panels.TryAdd(type, panel))
-                Debug.LogWarning($"[UIController] Duplicate UIPanel of type {type.Name} found.");
+                UIDebugLogger.Warn(enableDebugLogs, $"Duplicate UIPanel of type {type.Name} found.", panel);
         }
     }
 
-    private void Start() => CloseAllUI();
+    private void Start() => CloseAllUI(this);
 
-    public void CloseAllUI()
+    public void CloseAllUI(Object source = null, [CallerMemberName] string caller = "")
     {
         foreach (UIPanel panel in _panels.Values)
             panel.Close();
@@ -31,13 +36,15 @@ public class UIController : MonoBehaviour
 
         if (UImainHUD != null)
             UImainHUD.gameObject.SetActive(true);
+
+        UIDebugLogger.Log(enableDebugLogs, source, this, caller, "ClosedAllUI (HUD active)");
     }
 
-    public T OpenUI<T>() where T : UIPanel
+    public T OpenUI<T>(Object source = null, [CallerMemberName] string caller = "") where T : UIPanel
     {
         if (!_panels.TryGetValue(typeof(T), out UIPanel targetPanel))
         {
-            Debug.LogError($"[UIController] Panel of type {typeof(T).Name} not found under UIController!");
+            UIDebugLogger.Error(enableDebugLogs, source, this, caller, $"tried to OpenUI<{typeof(T).Name}>, but panel was not found!");
             return null;
         }
 
@@ -50,14 +57,18 @@ public class UIController : MonoBehaviour
         targetPanel.Open();
         _currentPanel = targetPanel;
 
+        UIDebugLogger.Log(enableDebugLogs, source, this, caller, $"OpenedUI ({typeof(T).Name})");
         return (T)targetPanel;
     }
-    
-    public void ToggleUI<T>() where T : UIPanel
+
+    public void ToggleUI<T>(Object source = null, [CallerMemberName] string caller = "") where T : UIPanel
     {
-        if (_currentPanel is T)
-            CloseAllUI();
+        bool willClose = _currentPanel is T;
+        UIDebugLogger.Log(enableDebugLogs, source, this, caller, $"ToggledUI ({typeof(T).Name}) to {(willClose ? "Closing to HUD" : "Opening")}");
+
+        if (willClose)
+            CloseAllUI(source, caller);
         else
-            OpenUI<T>();
+            OpenUI<T>(source, caller);
     }
 }

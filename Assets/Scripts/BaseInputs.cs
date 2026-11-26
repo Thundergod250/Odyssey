@@ -8,7 +8,7 @@ public class BaseInputs : MonoBehaviour
     private void Start()
     {
         if (inputManager != null)
-            inputManager.OnBuild.AddListener(HandleBuildInput);
+            inputManager.OnBuild.AddListener(OnBuildButtonPressed);
         else
             Debug.LogWarning("[BaseInputs] InputManager reference is missing.");
     }
@@ -16,14 +16,14 @@ public class BaseInputs : MonoBehaviour
     private void OnDestroy()
     {
         if (inputManager != null)
-            inputManager.OnBuild.RemoveListener(HandleBuildInput);
+            inputManager.OnBuild.RemoveListener(OnBuildButtonPressed);
     }
 
-    private void HandleBuildInput()
+    private void OnBuildButtonPressed()
     {
         if (uiController != null)
-            uiController.ToggleUI<UIBuilding>();
+            uiController.ToggleUI<UIBuilding>(this);
         else
-            Debug.LogWarning("[BaseInputs] UIController reference is missing.");
+            Debug.LogWarning("[BaseInputs] UIController reference is missing.", this);
     }
 }
