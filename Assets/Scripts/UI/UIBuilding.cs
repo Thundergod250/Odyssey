@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class UIBuilding : MonoBehaviour
+public class UIBuilding : UIPanel
 {
 
 }

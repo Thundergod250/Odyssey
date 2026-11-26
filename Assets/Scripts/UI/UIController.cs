@@ -1,37 +1,63 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class UIController : MonoBehaviour
 {
+    [Header("Persistent HUD")]
     public UIMainHUD UImainHUD;
-    public UIBuilding UIBuilding;
-    public UiFloodPump UIFloodPump;
 
-    private void Start()
+    private readonly Dictionary<Type, UIPanel> _panels = new();
+    private UIPanel _currentPanel;
+
+    private void Awake()
     {
-        CloseAllUI();
+        foreach (UIPanel panel in GetComponentsInChildren<UIPanel>(true))
+        {
+            Type type = panel.GetType();
+            if (!_panels.TryAdd(type, panel))
+                Debug.LogWarning($"[UIController] Duplicate UIPanel of type {type.Name} found.");
+        }
     }
-    
+
+    private void Start() => CloseAllUI();
+
     public void CloseAllUI()
     {
-        if (UIBuilding != null) UIBuilding.gameObject.SetActive(false);
-        if (UIFloodPump != null) UIFloodPump.gameObject.SetActive(false);
+        foreach (UIPanel panel in _panels.Values)
+            panel.Close();
 
-        if (UImainHUD != null) UImainHUD.gameObject.SetActive(true);
+        _currentPanel = null;
+
+        if (UImainHUD != null)
+            UImainHUD.gameObject.SetActive(true);
     }
 
-    public void OpenBuildingUI()
+    public T OpenUI<T>() where T : UIPanel
     {
-        if (UImainHUD != null) UImainHUD.gameObject.SetActive(false);
-        if (UIFloodPump != null) UIFloodPump.gameObject.SetActive(false);
+        if (!_panels.TryGetValue(typeof(T), out UIPanel targetPanel))
+        {
+            Debug.LogError($"[UIController] Panel of type {typeof(T).Name} not found under UIController!");
+            return null;
+        }
 
-        if (UIBuilding != null) UIBuilding.gameObject.SetActive(true);
+        if (UImainHUD != null)
+            UImainHUD.gameObject.SetActive(false);
+
+        if (_currentPanel != null && _currentPanel != targetPanel)
+            _currentPanel.Close();
+
+        targetPanel.Open();
+        _currentPanel = targetPanel;
+
+        return (T)targetPanel;
     }
-
-    public void OpenFloodPumpUI()
+    
+    public void ToggleUI<T>() where T : UIPanel
     {
-        if (UImainHUD != null) UImainHUD.gameObject.SetActive(false);
-        if (UIBuilding != null) UIBuilding.gameObject.SetActive(false);
-
-        if (UIFloodPump != null) UIFloodPump.gameObject.SetActive(true);
+        if (_currentPanel is T)
+            CloseAllUI();
+        else
+            OpenUI<T>();
     }
 }
