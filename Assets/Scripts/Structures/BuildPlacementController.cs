@@ -15,15 +15,20 @@ public class BuildPlacementController : MonoBehaviour
     [SerializeField] private LayerMask obstacleMask;
     [SerializeField] private bool includeTriggers = false;
     [SerializeField] private float verticalOffset = 0f;
-    [Tooltip("Lifts the bottom of the overlap check slightly above ground so flat floor contact is ignored while wall/side collisions are caught.")]
     [SerializeField] private float groundClearance = 0.05f;
 
-    [Header("Slope & Ledge / Overhang Check")]
+    [Header("Slope, Ledge & Side Wall Check")]
     [SerializeField] private float maxSlopeAngle = 15f;
     [SerializeField] private bool checkCornersForOverhang = true;
     [SerializeField] private float maxCornerHeightDiff = 0.25f;
     [SerializeField] private float cornerProbeHeight = 1.0f;
     [SerializeField] private float cornerProbeDistance = 2.0f;
+    [Tooltip("Prevents placing when any side of the box touches or clips into a cliff wall or vertical terrain face.")]
+    [SerializeField] private bool checkSideWalls = true;
+    [Tooltip("Small outward margin around the X/Z sides to catch a building pressed flush against a cliff wall.")]
+    [SerializeField] private float wallCheckPadding = 0.05f;
+    [Tooltip("Height above the ground raycast hit where side-wall overlap is tested so flat floor is ignored.")]
+    [SerializeField] private float wallCheckHeightOffset = 0.25f;
 
     [Header("Placement Rules")]
     [SerializeField] private bool exitModeAfterPlace = false;
@@ -130,17 +135,17 @@ public class BuildPlacementController : MonoBehaviour
             // 2. Check corners so placement doesn't hang over cliff ledges or clip steps
             bool hasSolidFootprint = !checkCornersForOverhang || IsFootprintSupported(hit.point.y);
 
-            // 3. Check side/body overlap against obstacles (lifted slightly by groundClearance)
+            QueryTriggerInteraction triggerMode = includeTriggers
+                ? QueryTriggerInteraction.Collide
+                : QueryTriggerInteraction.Ignore;
+
+            // 3. Check side/body overlap against obstacles
             Vector3 liftedCenter = _checkCenter + Vector3.up * groundClearance;
             Vector3 liftedExtents = new Vector3(
                 _checkHalfExtents.x,
                 Mathf.Max(0.01f, _checkHalfExtents.y - groundClearance * 0.5f),
                 _checkHalfExtents.z
             );
-
-            QueryTriggerInteraction triggerMode = includeTriggers
-                ? QueryTriggerInteraction.Collide
-                : QueryTriggerInteraction.Ignore;
 
             bool isBlocked = Physics.CheckBox(
                 liftedCenter,
@@ -150,7 +155,10 @@ public class BuildPlacementController : MonoBehaviour
                 triggerMode
             );
 
-            _canPlace = isFlatGround && hasSolidFootprint && !isBlocked;
+            // 4. Check sides against cliff walls / steep ground geometry
+            bool hitsSideWall = checkSideWalls && IsTouchingSideWall(hit.point.y, triggerMode);
+
+            _canPlace = isFlatGround && hasSolidFootprint && !isBlocked && !hitsSideWall;
             UpdateGhostVisual(_canPlace);
 
             bool leftClicked = Mouse.current != null
@@ -167,6 +175,42 @@ public class BuildPlacementController : MonoBehaviour
             SetGhostVisible(false);
             _canPlace = false;
         }
+    }
+
+    private bool IsTouchingSideWall(float centerGroundY, QueryTriggerInteraction triggerMode)
+    {
+        float sideHalfY = Mathf.Max(0.05f, (_checkHalfExtents.y - wallCheckHeightOffset) * 0.5f);
+        float wallCheckCenterY = centerGroundY + wallCheckHeightOffset + sideHalfY;
+
+        Vector3 wallCheckCenter = new Vector3(_checkCenter.x, wallCheckCenterY, _checkCenter.z);
+        Vector3 wallCheckExtents = new Vector3(
+            _checkHalfExtents.x + wallCheckPadding,
+            sideHalfY,
+            _checkHalfExtents.z + wallCheckPadding
+        );
+
+        Collider[] hits = Physics.OverlapBox(wallCheckCenter, wallCheckExtents, _checkRotation, groundMask, triggerMode);
+        foreach (Collider col in hits)
+        {
+            if (col == null) continue;
+
+            // If a collider belongs to a vertical cliff/wall, its closest point horizontally away from center
+            // or a short ray from the box center toward the hit point will have a steep wall normal.
+            Vector3 closest = col.ClosestPoint(wallCheckCenter);
+            Vector3 dir = closest - wallCheckCenter;
+            dir.y = 0f;
+
+            if (dir.sqrMagnitude > 0.0001f)
+            {
+                if (Physics.Raycast(wallCheckCenter, dir.normalized, out RaycastHit wallHit, dir.magnitude + 0.1f, groundMask, triggerMode))
+                {
+                    if (Vector3.Angle(wallHit.normal, Vector3.up) > maxSlopeAngle)
+                        return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private bool IsFootprintSupported(float centerGroundY)
