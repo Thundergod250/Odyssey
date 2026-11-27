@@ -171,35 +171,11 @@ PrefabInstance:
       propertyPath: m_Name
       value: Hexagon Interactable (1)
       objectReference: {fileID: 0}
-    - target: {fileID: 8807362505667000989, guid: ab5459159fa460a4a8592a80cba7a56b, type: 3}
-      propertyPath: structures
-      value: 
-      objectReference: {fileID: 130044213}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 3410401646104779851, guid: ab5459159fa460a4a8592a80cba7a56b, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 130044213}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: ab5459159fa460a4a8592a80cba7a56b, type: 3}
---- !u!1 &130044212 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 3410401646104779851, guid: ab5459159fa460a4a8592a80cba7a56b, type: 3}
-  m_PrefabInstance: {fileID: 130044211}
-  m_PrefabAsset: {fileID: 0}
---- !u!114 &130044213
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 130044212}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: cc7feed70e70b214ab2c44e023ef9cfc, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Structures
 --- !u!1 &169266796
 GameObject:
   m_ObjectHideFlags: 0
@@ -824,6 +800,24 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1307280040 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 2552397143835203735, guid: ab5459159fa460a4a8592a80cba7a56b, type: 3}
+  m_PrefabInstance: {fileID: 1074328745403388883}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1307280045
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1307280040}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2709c78e87922e44693c055f7278a526, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ColliderHit
+  parentInteractable: {fileID: 0}
 --- !u!1001 &1368760712
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1130,10 +1124,15 @@ PrefabInstance:
       propertyPath: m_Name
       value: Hexagon Interactable
       objectReference: {fileID: 0}
-    m_RemovedComponents: []
+    m_RemovedComponents:
+    - {fileID: 8807362505667000989, guid: ab5459159fa460a4a8592a80cba7a56b, type: 3}
+    - {fileID: 8176451172337223460, guid: ab5459159fa460a4a8592a80cba7a56b, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 2552397143835203735, guid: ab5459159fa460a4a8592a80cba7a56b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1307280045}
   m_SourcePrefab: {fileID: 100100000, guid: ab5459159fa460a4a8592a80cba7a56b, type: 3}
 --- !u!114 &1479874025115289018
 MonoBehaviour:
