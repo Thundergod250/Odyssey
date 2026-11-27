@@ -12,6 +12,7 @@ public class GameManager : MonoBehaviour
     public ClickInteractor ClickInteractor;
     public UIController UIController;
     public CameraMovement CameraMovement;
+    public BuildPlacementController BuildPlacementController; 
 
     private void Awake()
     {

@@ -4,6 +4,7 @@ public class BaseInputs : MonoBehaviour
 {
     [SerializeField] private InputManager inputManager;
     [SerializeField] private UIController uiController;
+    [SerializeField] private BuildPlacementController placementController;
 
     private void Start()
     {
@@ -37,6 +38,9 @@ public class BaseInputs : MonoBehaviour
 
     private void OnEscapeButtonPressed()
     {
+        if (placementController != null)
+            placementController.StopPlacement();
+
         if (uiController != null)
             uiController.CloseAllUI(this);
         else
