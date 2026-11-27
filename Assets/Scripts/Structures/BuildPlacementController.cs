@@ -15,6 +15,15 @@ public class BuildPlacementController : MonoBehaviour
     [SerializeField] private LayerMask obstacleMask;
     [SerializeField] private bool includeTriggers = false;
     [SerializeField] private float verticalOffset = 0f;
+    [Tooltip("Lifts the bottom of the overlap check slightly above ground so flat floor contact is ignored while wall/side collisions are caught.")]
+    [SerializeField] private float groundClearance = 0.05f;
+
+    [Header("Slope & Ledge / Overhang Check")]
+    [SerializeField] private float maxSlopeAngle = 15f;
+    [SerializeField] private bool checkCornersForOverhang = true;
+    [SerializeField] private float maxCornerHeightDiff = 0.25f;
+    [SerializeField] private float cornerProbeHeight = 1.0f;
+    [SerializeField] private float cornerProbeDistance = 2.0f;
 
     [Header("Placement Rules")]
     [SerializeField] private bool exitModeAfterPlace = false;
@@ -114,19 +123,34 @@ public class BuildPlacementController : MonoBehaviour
                 _checkHalfExtents = new Vector3(0.5f, 0.5f, 0.5f);
             }
 
+            // 1. Check ground slope at hit point
+            float slopeAngle = Vector3.Angle(hit.normal, Vector3.up);
+            bool isFlatGround = slopeAngle <= maxSlopeAngle;
+
+            // 2. Check corners so placement doesn't hang over cliff ledges or clip steps
+            bool hasSolidFootprint = !checkCornersForOverhang || IsFootprintSupported(hit.point.y);
+
+            // 3. Check side/body overlap against obstacles (lifted slightly by groundClearance)
+            Vector3 liftedCenter = _checkCenter + Vector3.up * groundClearance;
+            Vector3 liftedExtents = new Vector3(
+                _checkHalfExtents.x,
+                Mathf.Max(0.01f, _checkHalfExtents.y - groundClearance * 0.5f),
+                _checkHalfExtents.z
+            );
+
             QueryTriggerInteraction triggerMode = includeTriggers
                 ? QueryTriggerInteraction.Collide
                 : QueryTriggerInteraction.Ignore;
 
             bool isBlocked = Physics.CheckBox(
-                _checkCenter,
-                _checkHalfExtents,
+                liftedCenter,
+                liftedExtents,
                 _checkRotation,
                 obstacleMask,
                 triggerMode
             );
 
-            _canPlace = !isBlocked;
+            _canPlace = isFlatGround && hasSolidFootprint && !isBlocked;
             UpdateGhostVisual(_canPlace);
 
             bool leftClicked = Mouse.current != null
@@ -143,6 +167,37 @@ public class BuildPlacementController : MonoBehaviour
             SetGhostVisible(false);
             _canPlace = false;
         }
+    }
+
+    private bool IsFootprintSupported(float centerGroundY)
+    {
+        float hx = _checkHalfExtents.x;
+        float hz = _checkHalfExtents.z;
+
+        Vector3[] localCorners =
+        {
+            new Vector3(-hx, 0f, -hz),
+            new Vector3( hx, 0f, -hz),
+            new Vector3(-hx, 0f,  hz),
+            new Vector3( hx, 0f,  hz)
+        };
+
+        foreach (Vector3 localCorner in localCorners)
+        {
+            Vector3 worldCorner = _checkRotation * localCorner + new Vector3(_checkCenter.x, centerGroundY, _checkCenter.z);
+            Vector3 rayOrigin = worldCorner + Vector3.up * cornerProbeHeight;
+
+            if (!Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit cornerHit, cornerProbeHeight + cornerProbeDistance, groundMask))
+                return false;
+
+            if (Vector3.Angle(cornerHit.normal, Vector3.up) > maxSlopeAngle)
+                return false;
+
+            if (Mathf.Abs(cornerHit.point.y - centerGroundY) > maxCornerHeightDiff)
+                return false;
+        }
+
+        return true;
     }
 
     private void UpdateCheckBoxFromGhost()
