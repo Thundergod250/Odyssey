@@ -4,317 +4,182 @@ using UnityEngine.InputSystem;
 
 public class BuildPlacementController : MonoBehaviour
 {
-    [Header("Prefabs & Materials")]
+    [Header("Prefabs")]
     [SerializeField] private GameObject greenGhostPrefab;
     [SerializeField] private GameObject redGhostPrefab;
     [SerializeField] private GameObject structurePrefab;
 
-    [Header("Raycast & Collision")]
+    [Header("Raycast & Masks")]
     [SerializeField] private Camera targetCamera;
     [SerializeField] private LayerMask groundMask;
     [SerializeField] private LayerMask obstacleMask;
-    [SerializeField] private bool includeTriggers = false;
     [SerializeField] private float verticalOffset = 0f;
-    [SerializeField] private float groundClearance = 0.05f;
 
-    [Header("Slope, Ledge & Side Wall Check")]
+    [Header("Ground, Ledge & Wall Check")]
     [SerializeField] private float maxSlopeAngle = 15f;
-    [SerializeField] private bool checkCornersForOverhang = true;
     [SerializeField] private float maxCornerHeightDiff = 0.25f;
-    [SerializeField] private float cornerProbeHeight = 1.0f;
-    [SerializeField] private float cornerProbeDistance = 2.0f;
-    [Tooltip("Prevents placing when any side of the box touches or clips into a cliff wall or vertical terrain face.")]
-    [SerializeField] private bool checkSideWalls = true;
-    [Tooltip("Small outward margin around the X/Z sides to catch a building pressed flush against a cliff wall.")]
-    [SerializeField] private float wallCheckPadding = 0.05f;
-    [Tooltip("Height above the ground raycast hit where side-wall overlap is tested so flat floor is ignored.")]
-    [SerializeField] private float wallCheckHeightOffset = 0.25f;
-
-    [Header("Placement Rules")]
+    [SerializeField] private float bottomProbeOffset = 0.05f;
+    [SerializeField] private float wallCheckLift = 0.3f;
+    [SerializeField] private float wallCheckPadding = 0.02f;
     [SerializeField] private bool exitModeAfterPlace = false;
 
-    private GameObject _activeGhost;
+    private GameObject _ghost;
     private bool _isPlacing;
     private bool _canPlace;
-    private Vector3 _currentPoint;
-    private Vector3 _checkCenter;
-    private Vector3 _checkHalfExtents = new Vector3(0.5f, 0.5f, 0.5f);
-    private Quaternion _checkRotation = Quaternion.identity;
-
-    private Material _greenMaterial;
-    private Material _redMaterial;
+    private Vector3 _center;
+    private Vector3 _halfExtents = new Vector3(0.5f, 0.5f, 0.5f);
+    private Quaternion _rot = Quaternion.identity;
+    private Material _greenMat;
+    private Material _redMat;
 
     private void Awake()
     {
-        if (targetCamera == null)
-            targetCamera = Camera.main;
-
-        CacheGhostMaterials();
-    }
-
-    private void CacheGhostMaterials()
-    {
-        if (greenGhostPrefab != null)
-        {
-            Renderer r = greenGhostPrefab.GetComponentInChildren<Renderer>();
-            if (r != null) _greenMaterial = r.sharedMaterial;
-        }
-
-        if (redGhostPrefab != null)
-        {
-            Renderer r = redGhostPrefab.GetComponentInChildren<Renderer>();
-            if (r != null) _redMaterial = r.sharedMaterial;
-        }
+        if (targetCamera == null) targetCamera = Camera.main;
+        if (greenGhostPrefab != null) _greenMat = greenGhostPrefab.GetComponentInChildren<Renderer>()?.sharedMaterial;
+        if (redGhostPrefab != null) _redMat = redGhostPrefab.GetComponentInChildren<Renderer>()?.sharedMaterial;
     }
 
     public void StartPlacement()
     {
         StopPlacement();
-        CacheGhostMaterials();
         _isPlacing = true;
+        var prefab = greenGhostPrefab != null ? greenGhostPrefab : redGhostPrefab;
+        if (prefab == null) return;
 
-        GameObject prefabToSpawn = greenGhostPrefab != null ? greenGhostPrefab : redGhostPrefab;
-        if (prefabToSpawn != null)
-        {
-            _activeGhost = Instantiate(prefabToSpawn);
-            DisableGhostColliders(_activeGhost);
-        }
+        _ghost = Instantiate(prefab);
+        foreach (var col in _ghost.GetComponentsInChildren<Collider>()) col.enabled = false;
     }
 
     public void StopPlacement()
     {
         _isPlacing = false;
         _canPlace = false;
-
-        if (_activeGhost != null)
-        {
-            Destroy(_activeGhost);
-            _activeGhost = null;
-        }
+        if (_ghost != null) Destroy(_ghost);
     }
 
     private void Update()
     {
-        if (!_isPlacing || targetCamera == null)
-            return;
+        if (!_isPlacing || targetCamera == null) return;
 
         if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
         {
-            SetGhostVisible(false);
+            SetVisible(false);
             _canPlace = false;
             return;
         }
 
-        Vector2 pointerPos = Mouse.current != null
-            ? Mouse.current.position.ReadValue()
-            : (Vector2)Input.mousePosition;
-
-        Ray ray = targetCamera.ScreenPointToRay(pointerPos);
-        if (Physics.Raycast(ray, out RaycastHit hit, 500f, groundMask))
+        Vector2 pointer = Mouse.current != null ? Mouse.current.position.ReadValue() : (Vector2)Input.mousePosition;
+        if (!Physics.Raycast(targetCamera.ScreenPointToRay(pointer), out RaycastHit hit, 500f, groundMask))
         {
-            SetGhostVisible(true);
-            _currentPoint = hit.point + Vector3.up * verticalOffset;
-
-            if (_activeGhost != null)
-            {
-                _activeGhost.transform.position = _currentPoint;
-                _checkRotation = _activeGhost.transform.rotation;
-                UpdateCheckBoxFromGhost();
-            }
-            else
-            {
-                _checkRotation = Quaternion.identity;
-                _checkCenter = _currentPoint + Vector3.up * 0.5f;
-                _checkHalfExtents = new Vector3(0.5f, 0.5f, 0.5f);
-            }
-
-            // 1. Check ground slope at hit point
-            float slopeAngle = Vector3.Angle(hit.normal, Vector3.up);
-            bool isFlatGround = slopeAngle <= maxSlopeAngle;
-
-            // 2. Check corners so placement doesn't hang over cliff ledges or clip steps
-            bool hasSolidFootprint = !checkCornersForOverhang || IsFootprintSupported(hit.point.y);
-
-            QueryTriggerInteraction triggerMode = includeTriggers
-                ? QueryTriggerInteraction.Collide
-                : QueryTriggerInteraction.Ignore;
-
-            // 3. Check side/body overlap against obstacles
-            Vector3 liftedCenter = _checkCenter + Vector3.up * groundClearance;
-            Vector3 liftedExtents = new Vector3(
-                _checkHalfExtents.x,
-                Mathf.Max(0.01f, _checkHalfExtents.y - groundClearance * 0.5f),
-                _checkHalfExtents.z
-            );
-
-            bool isBlocked = Physics.CheckBox(
-                liftedCenter,
-                liftedExtents,
-                _checkRotation,
-                obstacleMask,
-                triggerMode
-            );
-
-            // 4. Check sides against cliff walls / steep ground geometry
-            bool hitsSideWall = checkSideWalls && IsTouchingSideWall(hit.point.y, triggerMode);
-
-            _canPlace = isFlatGround && hasSolidFootprint && !isBlocked && !hitsSideWall;
-            UpdateGhostVisual(_canPlace);
-
-            bool leftClicked = Mouse.current != null
-                ? Mouse.current.leftButton.wasPressedThisFrame
-                : Input.GetMouseButtonDown(0);
-
-            if (leftClicked && _canPlace)
-            {
-                PlaceStructure(_currentPoint);
-            }
-        }
-        else
-        {
-            SetGhostVisible(false);
+            SetVisible(false);
             _canPlace = false;
+            return;
+        }
+
+        SetVisible(true);
+        Vector3 pos = hit.point + Vector3.up * verticalOffset;
+        if (_ghost != null) _ghost.transform.position = pos;
+
+        SyncBoxFromGhost();
+
+        bool hasObstacleInside = Physics.CheckBox(_center, _halfExtents, _rot, obstacleMask, QueryTriggerInteraction.Ignore);
+        bool hasSolidBottom = HasSolidGroundBottom(hit);
+        bool hitsWall = HitsWallAboveFloor(hit.point.y);
+
+        _canPlace = !hasObstacleInside && hasSolidBottom && !hitsWall;
+        ApplyGhostMaterial(_canPlace);
+
+        bool clicked = Mouse.current != null ? Mouse.current.leftButton.wasPressedThisFrame : Input.GetMouseButtonDown(0);
+        if (clicked && _canPlace && structurePrefab != null)
+        {
+            Instantiate(structurePrefab, pos, _rot);
+            if (exitModeAfterPlace) StopPlacement();
         }
     }
 
-    private bool IsTouchingSideWall(float centerGroundY, QueryTriggerInteraction triggerMode)
+    private void SyncBoxFromGhost()
     {
-        float sideHalfY = Mathf.Max(0.05f, (_checkHalfExtents.y - wallCheckHeightOffset) * 0.5f);
-        float wallCheckCenterY = centerGroundY + wallCheckHeightOffset + sideHalfY;
-
-        Vector3 wallCheckCenter = new Vector3(_checkCenter.x, wallCheckCenterY, _checkCenter.z);
-        Vector3 wallCheckExtents = new Vector3(
-            _checkHalfExtents.x + wallCheckPadding,
-            sideHalfY,
-            _checkHalfExtents.z + wallCheckPadding
-        );
-
-        Collider[] hits = Physics.OverlapBox(wallCheckCenter, wallCheckExtents, _checkRotation, groundMask, triggerMode);
-        foreach (Collider col in hits)
+        if (_ghost == null) return;
+        BoxCollider box = _ghost.GetComponentInChildren<BoxCollider>();
+        if (box != null)
         {
-            if (col == null) continue;
-
-            // If a collider belongs to a vertical cliff/wall, its closest point horizontally away from center
-            // or a short ray from the box center toward the hit point will have a steep wall normal.
-            Vector3 closest = col.ClosestPoint(wallCheckCenter);
-            Vector3 dir = closest - wallCheckCenter;
-            dir.y = 0f;
-
-            if (dir.sqrMagnitude > 0.0001f)
-            {
-                if (Physics.Raycast(wallCheckCenter, dir.normalized, out RaycastHit wallHit, dir.magnitude + 0.1f, groundMask, triggerMode))
-                {
-                    if (Vector3.Angle(wallHit.normal, Vector3.up) > maxSlopeAngle)
-                        return true;
-                }
-            }
+            _center = box.transform.TransformPoint(box.center);
+            _rot = box.transform.rotation;
+            Vector3 size = Vector3.Scale(box.size, box.transform.lossyScale);
+            _halfExtents = new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), Mathf.Abs(size.z)) * 0.5f;
         }
-
-        return false;
     }
 
-    private bool IsFootprintSupported(float centerGroundY)
+    private bool HasSolidGroundBottom(RaycastHit centerHit)
     {
-        float hx = _checkHalfExtents.x;
-        float hz = _checkHalfExtents.z;
+        if (Vector3.Angle(centerHit.normal, Vector3.up) > maxSlopeAngle) return false;
 
-        Vector3[] localCorners =
+        float refY = centerHit.point.y;
+        float rayStartOffset = Mathf.Max(0.25f, bottomProbeOffset);
+        float rayDistance = rayStartOffset + Mathf.Max(0.25f, bottomProbeOffset * 2f);
+
+        Vector3[] corners =
         {
-            new Vector3(-hx, 0f, -hz),
-            new Vector3( hx, 0f, -hz),
-            new Vector3(-hx, 0f,  hz),
-            new Vector3( hx, 0f,  hz)
+            new Vector3(-_halfExtents.x, 0f, -_halfExtents.z),
+            new Vector3( _halfExtents.x, 0f, -_halfExtents.z),
+            new Vector3(-_halfExtents.x, 0f,  _halfExtents.z),
+            new Vector3( _halfExtents.x, 0f,  _halfExtents.z)
         };
 
-        foreach (Vector3 localCorner in localCorners)
+        foreach (var c in corners)
         {
-            Vector3 worldCorner = _checkRotation * localCorner + new Vector3(_checkCenter.x, centerGroundY, _checkCenter.z);
-            Vector3 rayOrigin = worldCorner + Vector3.up * cornerProbeHeight;
+            Vector3 worldCornerXZ = _rot * c + new Vector3(_center.x, 0f, _center.z);
+            Vector3 origin = new Vector3(worldCornerXZ.x, refY + rayStartOffset, worldCornerXZ.z);
 
-            if (!Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit cornerHit, cornerProbeHeight + cornerProbeDistance, groundMask))
+            if (!Physics.Raycast(origin, Vector3.down, out RaycastHit hit, rayDistance, groundMask))
                 return false;
 
-            if (Vector3.Angle(cornerHit.normal, Vector3.up) > maxSlopeAngle)
+            if (Vector3.Angle(hit.normal, Vector3.up) > maxSlopeAngle)
                 return false;
 
-            if (Mathf.Abs(cornerHit.point.y - centerGroundY) > maxCornerHeightDiff)
+            if (Mathf.Abs(hit.point.y - refY) > maxCornerHeightDiff)
                 return false;
         }
 
         return true;
     }
 
-    private void UpdateCheckBoxFromGhost()
+    private bool HitsWallAboveFloor(float floorY)
     {
-        if (_activeGhost == null)
-            return;
+        float liftedBottomY = floorY + wallCheckLift;
+        float boxTopY = _center.y + _halfExtents.y;
+        if (boxTopY <= liftedBottomY) return false;
 
-        BoxCollider box = _activeGhost.GetComponentInChildren<BoxCollider>();
-        if (box != null)
-        {
-            Transform boxTransform = box.transform;
-            _checkCenter = boxTransform.TransformPoint(box.center);
-            _checkRotation = boxTransform.rotation;
+        float liftedHalfY = (boxTopY - liftedBottomY) * 0.5f;
+        float liftedCenterY = liftedBottomY + liftedHalfY;
 
-            Vector3 scaledSize = Vector3.Scale(box.size, boxTransform.lossyScale);
-            _checkHalfExtents = new Vector3(
-                Mathf.Abs(scaledSize.x) * 0.5f,
-                Mathf.Abs(scaledSize.y) * 0.5f,
-                Mathf.Abs(scaledSize.z) * 0.5f
-            );
-            return;
-        }
+        Vector3 liftedCenter = new Vector3(_center.x, liftedCenterY, _center.z);
+        Vector3 liftedExtents = new Vector3(
+            _halfExtents.x + wallCheckPadding,
+            liftedHalfY,
+            _halfExtents.z + wallCheckPadding
+        );
 
-        Collider col = _activeGhost.GetComponentInChildren<Collider>();
-        if (col != null)
-        {
-            _checkCenter = col.bounds.center;
-            _checkHalfExtents = col.bounds.extents;
-            _checkRotation = Quaternion.identity;
-        }
+        return Physics.CheckBox(liftedCenter, liftedExtents, _rot, groundMask, QueryTriggerInteraction.Ignore);
     }
 
-    private void PlaceStructure(Vector3 position)
+    private void ApplyGhostMaterial(bool valid)
     {
-        if (structurePrefab != null)
-            Instantiate(structurePrefab, position, _activeGhost != null ? _activeGhost.transform.rotation : Quaternion.identity);
-
-        if (exitModeAfterPlace)
-            StopPlacement();
+        if (_ghost == null) return;
+        Material target = valid ? _greenMat : _redMat;
+        Renderer r = _ghost.GetComponentInChildren<Renderer>();
+        if (target != null && r != null && r.sharedMaterial != target) r.sharedMaterial = target;
     }
 
-    private void UpdateGhostVisual(bool isValid)
+    private void SetVisible(bool visible)
     {
-        if (_activeGhost == null)
-            return;
-
-        Material targetMat = isValid ? _greenMaterial : _redMaterial;
-        if (targetMat == null)
-            return;
-
-        Renderer currentRenderer = _activeGhost.GetComponentInChildren<Renderer>();
-        if (currentRenderer != null && currentRenderer.sharedMaterial != targetMat)
-        {
-            currentRenderer.sharedMaterial = targetMat;
-        }
-    }
-
-    private void SetGhostVisible(bool visible)
-    {
-        if (_activeGhost != null && _activeGhost.activeSelf != visible)
-            _activeGhost.SetActive(visible);
-    }
-
-    private void DisableGhostColliders(GameObject ghost)
-    {
-        foreach (Collider col in ghost.GetComponentsInChildren<Collider>())
-            col.enabled = false;
+        if (_ghost != null && _ghost.activeSelf != visible) _ghost.SetActive(visible);
     }
 
     private void OnDrawGizmosSelected()
     {
         Gizmos.color = _canPlace ? Color.green : Color.red;
-        Gizmos.matrix = Matrix4x4.TRS(_checkCenter, _checkRotation, Vector3.one);
-        Gizmos.DrawWireCube(Vector3.zero, _checkHalfExtents * 2f);
+        Gizmos.matrix = Matrix4x4.TRS(_center, _rot, Vector3.one);
+        Gizmos.DrawWireCube(Vector3.zero, _halfExtents * 2f);
     }
 }
