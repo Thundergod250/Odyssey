@@ -141,8 +141,15 @@ public class BuildPlacementController : MonoBehaviour
         return true;
     }
 
-    private static bool WasLeftClickPressed() =>
-        Mouse.current != null ? Mouse.current.leftButton.wasPressedThisFrame : Input.GetMouseButtonDown(0);
+    private static bool WasLeftClickPressed()
+    {
+        if (GameManager.Instance != null && GameManager.Instance.InputManager != null)
+            return GameManager.Instance.InputManager.WasQuickClickReleased;
+
+        return Mouse.current != null
+            ? Mouse.current.leftButton.wasReleasedThisFrame
+            : Input.GetMouseButtonUp(0);
+    }
 
     private void OnDrawGizmosSelected()
     {

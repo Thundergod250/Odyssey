@@ -7,6 +7,10 @@ public class InputManager : MonoBehaviour
     [Header("Input Asset")]
     [SerializeField] private InputActionAsset inputActionsAsset;
 
+    [Header("Click vs. Drag Thresholds")]
+    [SerializeField] private float quickClickMaxDuration = 0.2f;
+    [SerializeField] private float dragPixelThreshold = 6f;
+
     // Cached Input Actions
     private InputAction moveAction;
     private InputAction interactAction;
@@ -26,6 +30,11 @@ public class InputManager : MonoBehaviour
     public Vector2 LookInput { get; private set; }
     public Vector2 ScrollInput { get; private set; }
     public bool IsPanPressed { get; private set; }
+    public bool WasQuickClickReleased { get; private set; }
+
+    private float pressStartTime;
+    private Vector2 pressStartPos;
+    private bool wasDragged;
 
     // UnityEvents for single-frame button triggers
     [Header("Input Events")]
@@ -100,8 +109,23 @@ public class InputManager : MonoBehaviour
         // Handle hold states for camera panning
         if (panCameraAction != null)
         {
-            panCameraAction.started += _ => IsPanPressed = true;
-            panCameraAction.canceled += _ => IsPanPressed = false;
+            panCameraAction.started += _ =>
+            {
+                IsPanPressed = true;
+                pressStartTime = Time.unscaledTime;
+                pressStartPos = Mouse.current != null ? Mouse.current.position.ReadValue() : Vector2.zero;
+                wasDragged = false;
+            };
+
+            panCameraAction.canceled += _ =>
+            {
+                IsPanPressed = false;
+                float heldDuration = Time.unscaledTime - pressStartTime;
+                if (!wasDragged && heldDuration <= quickClickMaxDuration)
+                {
+                    WasQuickClickReleased = true;
+                }
+            };
         }
     }
 
@@ -119,6 +143,17 @@ public class InputManager : MonoBehaviour
 
     private void Update()
     {
+        WasQuickClickReleased = false;
+
+        if (IsPanPressed && Mouse.current != null && !wasDragged)
+        {
+            Vector2 currentPos = Mouse.current.position.ReadValue();
+            if (Vector2.Distance(pressStartPos, currentPos) >= dragPixelThreshold)
+            {
+                wasDragged = true;
+            }
+        }
+
         // Continuously poll value-based inputs if enabled
         if (moveAction != null && moveAction.enabled)
             MoveInput = moveAction.ReadValue<Vector2>();
